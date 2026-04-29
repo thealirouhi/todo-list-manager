@@ -91,7 +91,23 @@ public:
             cout << "Task not found.\n";
             return;
         }
-
+    
+        // check dependencies
+        for (int depId : task->getDependencies()) {
+            Task* depTask = findTask(depId);
+    
+            if (!depTask) {
+                cout << "Dependency " << depId << " not found.\n";
+                return;
+            }
+    
+            if (!depTask->isDone()) {
+                cout << "Cannot complete task " << id
+                     << ". Dependency " << depId << " is not done.\n";
+                return;
+            }
+        }
+    
         task->markDone();
         cout << "Task " << id << " marked done.\n";
     }
