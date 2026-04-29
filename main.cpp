@@ -114,11 +114,26 @@ public:
 
     void addDependency(int taskId, int depId) {
         Task* task = findTask(taskId);
-        if (!task) {
-            cout << "Task not found.\n";
+        Task* depTask = findTask(depId);
+    
+        if (!task || !depTask) {
+            cout << "Invalid task or dependency.\n";
             return;
         }
-
+    
+        if (taskId == depId) {
+            cout << "Task cannot depend on itself.\n";
+            return;
+        }
+    
+        // prevent duplicates
+        for (int d : task->getDependencies()) {
+            if (d == depId) {
+                cout << "Dependency already exists.\n";
+                return;
+            }
+        }
+    
         task->addDependency(depId);
         cout << "Dependency added: " << taskId << " -> " << depId << "\n";
     }
