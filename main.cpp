@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <algorithm>
 
 using namespace std;
 
@@ -10,180 +11,293 @@ private:
     int id;
     string title;
     bool done;
-    vector<int> dependencies;
+    vector<int> deps;
 
 public:
-    Task(int taskId, const string& taskTitle)
-        : id(taskId), title(taskTitle), done(false) {}
+    Task(int i, string t) : id(i), title(t), done(false) {}
 
-    int getId() const { return id; }
-    string getTitle() const { return title; }
-    bool isDone() const { return done; }
+    int getId() { return id; }
+    string getTitle() { return title; }
+    bool isDone() { return done; }
+    vector<int>& getDeps() { return deps; }
 
-    void markDone() {
-        done = true;
-    }
-
-    void addDependency(int depId) {
-        dependencies.push_back(depId);
-    }
-
-    vector<int> getDependencies() const {
-        return dependencies;
-    }
+    void addDep(int d) { deps.push_back(d); }
+    void markDone() { done = true; }
 };
 
 class TodoList {
 private:
-    string name;
     vector<Task> tasks;
+    string name;
 
     Task* findTask(int id) {
-        for (auto& task : tasks) {
-            if (task.getId() == id) {
-                return &task;
-            }
-        }
+        for (auto &t : tasks)
+            if (t.getId() == id) return &t;
         return nullptr;
     }
 
+    bool isDependedOn(int id) {
+        for (auto &t : tasks)
+            for (int d : t.getDeps())
+                if (d == id) return true;
+        return false;
+    }
+
 public:
-    void createList(const string& listName) {
-        name = listName;
+    void newList(string n) {
+        name = n;
         tasks.clear();
         cout << "List '" << name << "' created.\n";
     }
 
-    void addTask(int id, const string& title) {
-        if (findTask(id) != nullptr) {
+    void addTask(int id, string title) {
+        if (findTask(id)) {
+            cout << "Error: task " << id << " already exists.\n";
+            return;
+        }
+        tasks.push_back(Task(id, title));
+        cout << "Task " << id << " added.\n";
+    }
+
+    void addTaskDep(int id, string title, vector<int> deps) {
+        if (findTask(id)) {
             cout << "Error: task " << id << " already exists.\n";
             return;
         }
 
-        tasks.emplace_back(id, title);
-        cout << "Task " << id << " added.\n";
-    }
-
-    void listTasks() {
-        if (tasks.empty()) {
-            cout << "No tasks.\n";
-            return;
-        }
-
-        for (const auto& task : tasks) {
-            cout << task.getId() << " | "
-                 << task.getTitle() << " | "
-                 << (task.isDone() ? "done" : "pending");
-
-            auto deps = task.getDependencies();
-            if (!deps.empty()) {
-                cout << " | deps: ";
-                for (int d : deps) cout << d << " ";
-            }
-
-            cout << "\n";
-        }
-    }
-
-    void markDone(int id) {
-        Task* task = findTask(id);
-        if (!task) {
-            cout << "Task not found.\n";
-            return;
-        }
-    
-        // check dependencies
-        for (int depId : task->getDependencies()) {
-            Task* depTask = findTask(depId);
-    
-            if (!depTask) {
-                cout << "Dependency " << depId << " not found.\n";
+        for (int d : deps) {
+            if (!findTask(d)) {
+                cout << "Error: dependency " << d << " not found.\n";
                 return;
             }
-    
-            if (!depTask->isDone()) {
+        }
+
+        Task t(id, title);
+        for (int d : deps) t.addDep(d);
+        tasks.push_back(t);
+
+        cout << "Task " << id << " added with " << deps.size() << " deps.\n";
+    }
+
+    void doneTask(int id) {
+        Task* t = findTask(id);
+
+        if (!t) {
+            cout << "Error: task " << id << " not found.\n";
+            return;
+        }
+
+        for (int d : t->getDeps()) {
+            Task* dt = findTask(d);
+            if (!dt || !dt->isDone()) {
                 cout << "Cannot complete task " << id
-                     << ". Dependency " << depId << " is not done.\n";
+                     << ": prerequisites not met.\n";
                 return;
             }
         }
-    
-        task->markDone();
-        cout << "Task " << id << " marked done.\n";
+
+        t->markDone();
+        cout << "Task " << id << " marked as done.\n";
     }
 
-    void addDependency(int taskId, int depId) {
-        Task* task = findTask(taskId);
-        Task* depTask = findTask(depId);
-    
-        if (!task || !depTask) {
-            cout << "Invalid task or dependency.\n";
+    void status(int id) {
+        Task* t = findTask(id);
+
+        if (!t) {
+            cout << "Error: task " << id << " not found.\n";
             return;
         }
-    
-        if (taskId == depId) {
-            cout << "Task cannot depend on itself.\n";
-            return;
+
+        cout << "Task " << id << ": " << t->getTitle() << "\n";
+        cout << "Status: " << (t->isDone() ? "done" : "pending") << "\n";
+
+        auto deps = t->getDeps();
+        if (deps.empty()) return;
+
+        sort(deps.begin(), deps.end());
+
+        cout << "Dependencies: ";
+
+        for (int i = 0; i < deps.size(); i++) {
+            Task* dt = findTask(deps[i]);
+            if (!dt) continue;
+
+            cout << deps[i] << " (" << dt->getTitle() << ")";
+            if (i != deps.size() - 1) cout << ", ";
         }
-    
-        // prevent duplicates
-        for (int d : task->getDependencies()) {
-            if (d == depId) {
-                cout << "Dependency already exists.\n";
-                return;
+
+        cout << "\n";
+    }
+
+    void printAll() {
+        vector<Task*> v;
+        for (auto &t : tasks) v.push_back(&t);
+
+        sort(v.begin(), v.end(),
+             [](Task* a, Task* b) { return a->getId() < b->getId(); });
+
+        for (auto t : v) {
+            cout << (t->isDone() ? "[done] " : "[pending] ");
+            cout << t->getId() << ": " << t->getTitle() << "\n";
+        }
+    }
+
+    void pending() {
+        vector<Task*> v;
+        for (auto &t : tasks) v.push_back(&t);
+
+        sort(v.begin(), v.end(),
+             [](Task* a, Task* b) { return a->getId() < b->getId(); });
+
+        bool first = true;
+
+        for (auto t : v) {
+            if (!t->isDone()) {
+                if (first) {
+                    cout << "Pending tasks: ";
+                    first = false;
+                } else {
+                    cout << ", ";
+                }
+                cout << t->getId() << " (" << t->getTitle() << ")";
             }
         }
-    
-        task->addDependency(depId);
-        cout << "Dependency added: " << taskId << " -> " << depId << "\n";
+
+        if (!first) cout << "\n";
+    }
+
+    void ready() {
+        vector<Task*> v;
+        for (auto &t : tasks) v.push_back(&t);
+
+        sort(v.begin(), v.end(),
+             [](Task* a, Task* b) { return a->getId() < b->getId(); });
+
+        bool first = true;
+
+        for (auto t : v) {
+            if (t->isDone()) continue;
+
+            bool ok = true;
+            for (int d : t->getDeps()) {
+                Task* dt = findTask(d);
+                if (!dt || !dt->isDone()) {
+                    ok = false;
+                    break;
+                }
+            }
+
+            if (ok) {
+                if (first) {
+                    cout << "Ready tasks: ";
+                    first = false;
+                } else {
+                    cout << " ";
+                }
+                cout << t->getId();
+            }
+        }
+
+        if (!first) cout << "\n";
+    }
+
+    void removeTask(int id) {
+        if (!findTask(id)) {
+            cout << "Error: task " << id << " not found.\n";
+            return;
+        }
+
+        if (isDependedOn(id)) {
+            cout << "Cannot remove task " << id
+                 << ": other tasks depend on it.\n";
+            return;
+        }
+
+        // cleanup dependencies
+        for (auto &t : tasks) {
+            auto &d = t.getDeps();
+            d.erase(remove(d.begin(), d.end(), id), d.end());
+        }
+
+        for (int i = 0; i < tasks.size(); i++) {
+            if (tasks[i].getId() == id) {
+                tasks.erase(tasks.begin() + i);
+                break;
+            }
+        }
+
+        cout << "Task " << id << " removed.\n";
     }
 };
 
 int main() {
-    TodoList todo;
+    TodoList list;
     string line;
 
     while (getline(cin, line)) {
+        if (line.empty()) continue;
+
         stringstream ss(line);
-        string command;
-        ss >> command;
+        string cmd;
+        ss >> cmd;
 
-        if (command == "EXIT") {
-            break;
+        if (cmd == "NEW_LIST") {
+            string name;
+            ss >> name;
+            list.newList(name);
         }
 
-        else if (command == "NEW_LIST") {
-            string listName;
-            ss >> listName;
-            todo.createList(listName);
-        }
-
-        else if (command == "ADD") {
+        else if (cmd == "ADD") {
             int id;
-            ss >> id;
-
             string title;
-            getline(ss, title);
-            if (!title.empty() && title[0] == ' ')
-                title = title.substr(1);
-
-            todo.addTask(id, title);
+            ss >> id >> title;
+            list.addTask(id, title);
         }
 
-        else if (command == "LIST") {
-            todo.listTasks();
+        else if (cmd == "ADD_DEP") {
+            int id;
+            string title;
+            ss >> id >> title;
+
+            vector<int> deps;
+            int x;
+            while (ss >> x) deps.push_back(x);
+
+            list.addTaskDep(id, title, deps);
         }
 
-        else if (command == "DONE") {
+        else if (cmd == "DONE") {
             int id;
             ss >> id;
-            todo.markDone(id);
+            list.doneTask(id);
         }
 
-        else if (command == "DEP") {
-            int taskId, depId;
-            ss >> taskId >> depId;
-            todo.addDependency(taskId, depId);
+        else if (cmd == "STATUS") {
+            int id;
+            ss >> id;
+            list.status(id);
+        }
+
+        else if (cmd == "PRINT_ALL") {
+            list.printAll();
+        }
+
+        else if (cmd == "PENDING") {
+            list.pending();
+        }
+
+        else if (cmd == "READY") {
+            list.ready();
+        }
+
+        else if (cmd == "REMOVE") {
+            int id;
+            ss >> id;
+            list.removeTask(id);
+        }
+
+        else if (cmd == "EXIT") {
+            break;
         }
     }
 
